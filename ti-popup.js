@@ -1,10 +1,24 @@
 /**
  * TiPopup
  *
- * https://github.com/kalininDanil17Y/jquery-ti-popup
- * https://codepen.io/kalinindanil17Y/pen/RNGzKad
+ * Usage:
+ * $('[data-ti-popup]').tiPopup(...)
+ *
+ * Supported:
+ * - data-ti-popup="HTML"
+ * - data-ti-popup-fn="window.someFunction"
+ * - $(el).tiPopup("HTML")
+ * - $(el).tiPopup(function (el, event) { return "HTML" })
+ * - $(el).tiPopup(function (el, event) { return { html: "HTML" } })
+ * - $(el).tiPopup({ html: "HTML" })
+ * - $(el).tiPopup({ text: "Plain text" })
+ * - $(el).tiPopup({ getHtml(el, event) { return "HTML" } })
+ * - $(el).tiPopup({ getText(el, event) { return "Plain text" } })
+ * - $(el).tiPopup({ getConfig(el, event) { return { html: "HTML" } } })
  */
 (function (window, document, $) {
+    'use strict';
+
     if (window.BT_POPUP) {
         return;
     }
@@ -12,7 +26,16 @@
     var POPUP_ID = 'bt_event_popup';
     var STYLE_ID = 'bt_event_popup_styles';
     var DATA_KEY = 'btEventPopup';
-    var SELECTOR = '[data-bt-popup],[data-ti-popup],[data-bt-popup-fn],[data-ti-popup-fn],[data-bt-popup-bound]';
+
+    var SELECTOR = [
+        '[data-bt-popup]',
+        '[data-ti-popup]',
+        '[data-bt-popup-fn]',
+        '[data-ti-popup-fn]',
+        '[data-bt-popup-bound]',
+        '[data-ti-popup-bound]'
+    ].join(',');
+
     var defaults = {
         zIndex: 12000,
         maxWidth: 360,
@@ -24,10 +47,10 @@
         innerStyle: '',
         refreshInterval: 0
     };
+
     var activeEl = null;
     var activeEvent = null;
     var refreshTimer = null;
-    var hoverWatchTimer = null;
 
     function ensureStyles() {
         if (document.getElementById(STYLE_ID)) {
@@ -37,6 +60,7 @@
         var style = document.createElement('style');
         style.id = STYLE_ID;
         style.type = 'text/css';
+
         style.appendChild(document.createTextNode(
             '.bt_event_popup{' +
                 'position:fixed;' +
@@ -62,12 +86,15 @@
                 'line-height:1.35;' +
             '}'
         ));
+
         document.head.appendChild(style);
     }
 
     function getPopup() {
         ensureStyles();
+
         var popup = document.getElementById(POPUP_ID);
+
         if (!popup) {
             popup = document.createElement('div');
             popup.id = POPUP_ID;
@@ -75,33 +102,49 @@
             popup.innerHTML = '<div class="bt_event_popup__inner"></div>';
             document.body.appendChild(popup);
         }
+
         return popup;
     }
 
     function extend(target, source) {
         target = target || {};
         source = source || {};
+
         for (var key in source) {
             if (Object.prototype.hasOwnProperty.call(source, key)) {
                 target[key] = source[key];
             }
         }
+
         return target;
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
     function readFn(path) {
         path = String(path || '');
+
         if (!path) {
             return null;
         }
 
         var ctx = window;
         var parts = path.split('.');
+
         for (var i = 0; i < parts.length; i++) {
             if (!parts[i]) {
                 return null;
             }
+
             ctx = ctx[parts[i]];
+
             if (typeof ctx === 'undefined' || ctx === null) {
                 return null;
             }
@@ -110,117 +153,247 @@
         return typeof ctx === 'function' ? ctx : null;
     }
 
-    function normalizeConfig(result, el, event) {
-        var cfg = extend({}, defaults);
-        var attrHtml = el.getAttribute('data-bt-popup') || el.getAttribute('data-ti-popup') || '';
-        var attrFn = el.getAttribute('data-bt-popup-fn') || el.getAttribute('data-ti-popup-fn') || '';
-        var dataCfg = $ ? $(el).data(DATA_KEY) : null;
-        var provider = null;
+    function getAttr(el, names, fallback) {
+        for (var i = 0; i < names.length; i++) {
+            var value = el.getAttribute(names[i]);
 
-        if (dataCfg) {
-            if (typeof dataCfg === 'function') {
-                provider = dataCfg;
-            } else {
-                cfg = extend(cfg, dataCfg);
-                if (typeof dataCfg.provider === 'function') {
-                    provider = dataCfg.provider;
-                }
+            if (value !== null && value !== '') {
+                return value;
             }
         }
 
-        if (!provider && attrFn) {
-            provider = readFn(attrFn);
-        }
+        return fallback;
+    }
 
-        if (typeof result === 'undefined' && provider) {
-            result = provider.call(el, el, event);
-        }
-        if (typeof result === 'undefined' && dataCfg && typeof dataCfg !== 'function') {
-            result = dataCfg;
-        }
-        if (typeof result === 'undefined') {
-            result = attrHtml;
+    function parseNumber(value, fallback) {
+        var result = parseInt(value, 10);
+        return isNaN(result) ? fallback : result;
+    }
+
+    function normalizeReturnedConfig(result, el, event) {
+        var cfg = {};
+
+        if (typeof result === 'function') {
+            result = result.call(el, el, event);
         }
 
         if (typeof result === 'string' || typeof result === 'number') {
             cfg.html = String(result);
-        } else {
-            cfg = extend(cfg, result || {});
+            return cfg;
         }
 
-        cfg.html = typeof cfg.html !== 'undefined' ? String(cfg.html) : String(cfg.content || cfg.text || '');
-        cfg.zIndex = parseInt(el.getAttribute('data-bt-popup-z-index') || el.getAttribute('data-ti-popup-z-index') || cfg.zIndex, 10) || defaults.zIndex;
-        cfg.className = String(el.getAttribute('data-bt-popup-class') || el.getAttribute('data-ti-popup-class') || cfg.className || '');
-        cfg.innerClassName = String(el.getAttribute('data-bt-popup-inner-class') || el.getAttribute('data-ti-popup-inner-class') || cfg.innerClassName || '');
-        cfg.style = String(el.getAttribute('data-bt-popup-style') || el.getAttribute('data-ti-popup-style') || cfg.style || '');
-        cfg.innerStyle = String(el.getAttribute('data-bt-popup-inner-style') || el.getAttribute('data-ti-popup-inner-style') || cfg.innerStyle || '');
-        cfg.refreshInterval = parseInt(el.getAttribute('data-bt-popup-refresh') || el.getAttribute('data-ti-popup-refresh') || cfg.refreshInterval, 10) || 0;
+        if (result && typeof result === 'object') {
+            cfg = extend({}, result);
+        }
 
         return cfg;
     }
 
-    function positionPopup(popup, event, cfg) {
-        var viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
-        var viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
-        var x = event && typeof event.clientX !== 'undefined' ? event.clientX : 0;
-        var y = event && typeof event.clientY !== 'undefined' ? event.clientY : 0;
-        var left = x + cfg.offsetX;
-        var top = y + cfg.offsetY;
-        var rect = popup.getBoundingClientRect();
-        var pad = 8;
+    function normalizeConfig(result, el, event) {
+        var cfg = extend({}, defaults);
 
-        if (left + rect.width + pad > viewportW) {
-            left = Math.max(pad, x - rect.width - cfg.offsetX);
-        }
-        if (top + rect.height + pad > viewportH) {
-            top = Math.max(pad, y - rect.height - cfg.offsetY);
+        var attrHtml = getAttr(el, [
+            'data-bt-popup',
+            'data-ti-popup'
+        ], '');
+
+        var attrFn = getAttr(el, [
+            'data-bt-popup-fn',
+            'data-ti-popup-fn'
+        ], '');
+
+        var dataCfg = $ ? $(el).data(DATA_KEY) : null;
+
+        var attrProvider = readFn(attrFn);
+        var configFromData = {};
+        var configFromResult = {};
+
+        /**
+         * 1. Конфиг из JS
+         */
+        if (typeof dataCfg !== 'undefined' && dataCfg !== null) {
+            configFromData = normalizeReturnedConfig(dataCfg, el, event);
+            cfg = extend(cfg, configFromData);
         }
 
-        popup.style.left = left + 'px';
-        popup.style.top = top + 'px';
+        /**
+         * 2. getConfig — основной способ получить полный динамический конфиг.
+         */
+        if (typeof cfg.getConfig === 'function') {
+            var dynamicConfig = cfg.getConfig.call(el, el, event);
+
+            if (dynamicConfig && typeof dynamicConfig === 'object') {
+                cfg = extend(cfg, dynamicConfig);
+            } else if (typeof dynamicConfig === 'string' || typeof dynamicConfig === 'number') {
+                cfg.html = String(dynamicConfig);
+            }
+        }
+
+        /**
+         * 3. Legacy provider — оставлен для совместимости.
+         */
+        if (typeof cfg.provider === 'function') {
+            var providerConfig = cfg.provider.call(el, el, event);
+
+            if (providerConfig && typeof providerConfig === 'object') {
+                cfg = extend(cfg, providerConfig);
+            } else if (typeof providerConfig === 'string' || typeof providerConfig === 'number') {
+                cfg.html = String(providerConfig);
+            }
+        }
+
+        /**
+         * 4. Функция из data-ti-popup-fn / data-bt-popup-fn.
+         */
+        if (attrProvider) {
+            configFromResult = normalizeReturnedConfig(attrProvider, el, event);
+            cfg = extend(cfg, configFromResult);
+        }
+
+        /**
+         * 5. Прямой result, если normalizeConfig когда-нибудь будет вызван с result.
+         */
+        if (typeof result !== 'undefined') {
+            configFromResult = normalizeReturnedConfig(result, el, event);
+            cfg = extend(cfg, configFromResult);
+        }
+
+        /**
+         * 6. getHtml / getText — рекомендуемый способ динамического контента.
+         */
+        if (typeof cfg.getHtml === 'function') {
+            cfg.html = cfg.getHtml.call(el, el, event);
+        }
+
+        if (typeof cfg.getText === 'function') {
+            cfg.text = cfg.getText.call(el, el, event);
+        }
+
+        /**
+         * 7. Если HTML всё ещё не задан — берём data-ti-popup.
+         */
+        if (
+            typeof cfg.html === 'undefined' &&
+            typeof cfg.text === 'undefined' &&
+            typeof cfg.content === 'undefined' &&
+            attrHtml
+        ) {
+            cfg.html = attrHtml;
+        }
+
+        /**
+         * 8. HTML / text / content.
+         *
+         * html/content вставляются как HTML.
+         * text экранируется.
+         */
+        if (typeof cfg.html !== 'undefined') {
+            cfg.html = String(cfg.html);
+        } else if (typeof cfg.text !== 'undefined') {
+            cfg.html = escapeHtml(cfg.text);
+        } else if (typeof cfg.content !== 'undefined') {
+            cfg.html = String(cfg.content);
+        } else {
+            cfg.html = '';
+        }
+
+        /**
+         * 9. Атрибуты имеют приоритет над конфигом.
+         */
+        cfg.zIndex = parseNumber(getAttr(el, [
+            'data-bt-popup-z-index',
+            'data-ti-popup-z-index'
+        ], cfg.zIndex), defaults.zIndex);
+
+        cfg.maxWidth = parseNumber(getAttr(el, [
+            'data-bt-popup-max-width',
+            'data-ti-popup-max-width'
+        ], cfg.maxWidth), defaults.maxWidth);
+
+        cfg.offsetX = parseNumber(getAttr(el, [
+            'data-bt-popup-offset-x',
+            'data-ti-popup-offset-x'
+        ], cfg.offsetX), defaults.offsetX);
+
+        cfg.offsetY = parseNumber(getAttr(el, [
+            'data-bt-popup-offset-y',
+            'data-ti-popup-offset-y'
+        ], cfg.offsetY), defaults.offsetY);
+
+        cfg.className = String(getAttr(el, [
+            'data-bt-popup-class',
+            'data-ti-popup-class'
+        ], cfg.className || ''));
+
+        cfg.innerClassName = String(getAttr(el, [
+            'data-bt-popup-inner-class',
+            'data-ti-popup-inner-class'
+        ], cfg.innerClassName || ''));
+
+        cfg.style = String(getAttr(el, [
+            'data-bt-popup-style',
+            'data-ti-popup-style'
+        ], cfg.style || ''));
+
+        cfg.innerStyle = String(getAttr(el, [
+            'data-bt-popup-inner-style',
+            'data-ti-popup-inner-style'
+        ], cfg.innerStyle || ''));
+
+        cfg.refreshInterval = parseNumber(getAttr(el, [
+            'data-bt-popup-refresh',
+            'data-ti-popup-refresh'
+        ], cfg.refreshInterval), 0);
+
+        return cfg;
     }
 
-    function show(el, event) {
-        var cfg = normalizeConfig(undefined, el, event);
-        if (!cfg.html) {
-            hide();
-            return;
-        }
+    function applyPopupConfig(popup, inner, cfg) {
+        popup.className = 'bt_event_popup' + (cfg.className ? ' ' + cfg.className : '');
 
-        var popup = getPopup();
-        var inner = popup.querySelector('.bt_event_popup__inner');
-        activeEl = el;
-        activeEvent = event;
-
-        popup.className = 'bt_event_popup' + (cfg.className ? (' ' + cfg.className) : '');
         popup.style.cssText = '';
         popup.style.position = 'fixed';
         popup.style.left = '0';
         popup.style.top = '0';
         popup.style.boxSizing = 'border-box';
         popup.style.zIndex = cfg.zIndex;
-        popup.style.maxWidth = (parseInt(cfg.maxWidth, 10) || defaults.maxWidth) + 'px';
+        popup.style.maxWidth = cfg.maxWidth + 'px';
+
         if (cfg.style) {
             popup.style.cssText += ';' + cfg.style;
         }
 
-        inner.className = 'bt_event_popup__inner' + (cfg.innerClassName ? (' ' + cfg.innerClassName) : '');
+        inner.className = 'bt_event_popup__inner' + (
+            cfg.innerClassName ? ' ' + cfg.innerClassName : ''
+        );
+
         inner.style.cssText = cfg.innerStyle || '';
         inner.innerHTML = cfg.html;
-
-        popup.style.display = 'block';
-        positionPopup(popup, event, cfg);
-        startRefresh(el, cfg);
-        startHoverWatch();
     }
 
-    function move(el, event) {
-        var popup = document.getElementById(POPUP_ID);
-        if (!popup || popup.style.display !== 'block' || activeEl !== el) {
-            return;
+    function positionPopup(popup, event, cfg) {
+        var viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+        var viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+
+        var x = event && typeof event.clientX !== 'undefined' ? event.clientX : 0;
+        var y = event && typeof event.clientY !== 'undefined' ? event.clientY : 0;
+
+        var left = x + cfg.offsetX;
+        var top = y + cfg.offsetY;
+
+        var rect = popup.getBoundingClientRect();
+        var pad = 8;
+
+        if (left + rect.width + pad > viewportW) {
+            left = Math.max(pad, x - rect.width - cfg.offsetX);
         }
-        activeEvent = event;
-        positionPopup(popup, event, normalizeConfig(undefined, el, event));
+
+        if (top + rect.height + pad > viewportH) {
+            top = Math.max(pad, y - rect.height - cfg.offsetY);
+        }
+
+        popup.style.left = left + 'px';
+        popup.style.top = top + 'px';
     }
 
     function stopRefresh() {
@@ -230,64 +403,90 @@
         }
     }
 
-    function stopHoverWatch() {
-        if (hoverWatchTimer) {
-            clearInterval(hoverWatchTimer);
-            hoverWatchTimer = null;
-        }
-    }
-
-    function startHoverWatch() {
-        stopHoverWatch();
-        hoverWatchTimer = setInterval(function () {
-            if (!activeEl) {
-                stopHoverWatch();
-                return;
-            }
-            if (!document.documentElement.contains(activeEl) || (activeEl.matches && !activeEl.matches(':hover'))) {
-                hide();
-            }
-        }, 120);
-    }
-
     function refreshContent(el) {
         var popup = document.getElementById(POPUP_ID);
+
         if (!popup || popup.style.display !== 'block' || activeEl !== el) {
             return;
         }
 
-        var cfg = normalizeConfig(undefined, el, activeEvent);
         var inner = popup.querySelector('.bt_event_popup__inner');
-        if (!cfg.html || !inner) {
+
+        if (!inner) {
             hide();
             return;
         }
 
-        popup.className = 'bt_event_popup' + (cfg.className ? (' ' + cfg.className) : '');
-        popup.style.zIndex = cfg.zIndex;
-        popup.style.maxWidth = (parseInt(cfg.maxWidth, 10) || defaults.maxWidth) + 'px';
-        inner.className = 'bt_event_popup__inner' + (cfg.innerClassName ? (' ' + cfg.innerClassName) : '');
-        inner.style.cssText = cfg.innerStyle || '';
-        inner.innerHTML = cfg.html;
+        var cfg = normalizeConfig(undefined, el, activeEvent);
+
+        if (!cfg.html) {
+            hide();
+            return;
+        }
+
+        applyPopupConfig(popup, inner, cfg);
         positionPopup(popup, activeEvent, cfg);
     }
 
     function startRefresh(el, cfg) {
         stopRefresh();
+
         if (!cfg || !cfg.refreshInterval || cfg.refreshInterval < 100) {
             return;
         }
+
         refreshTimer = setInterval(function () {
             refreshContent(el);
         }, cfg.refreshInterval);
     }
 
+    function show(el, event) {
+        var cfg = normalizeConfig(undefined, el, event);
+
+        if (!cfg.html) {
+            hide();
+            return;
+        }
+
+        var popup = getPopup();
+        var inner = popup.querySelector('.bt_event_popup__inner');
+
+        if (!inner) {
+            return;
+        }
+
+        activeEl = el;
+        activeEvent = event;
+
+        applyPopupConfig(popup, inner, cfg);
+
+        popup.style.display = 'block';
+
+        positionPopup(popup, event, cfg);
+        startRefresh(el, cfg);
+    }
+
+    function move(el, event) {
+        var popup = document.getElementById(POPUP_ID);
+
+        if (!popup || popup.style.display !== 'block' || activeEl !== el) {
+            return;
+        }
+
+        activeEvent = event;
+
+        var cfg = normalizeConfig(undefined, el, event);
+        positionPopup(popup, event, cfg);
+    }
+
     function hide() {
         var popup = document.getElementById(POPUP_ID);
+
         stopRefresh();
-        stopHoverWatch();
+
         activeEl = null;
         activeEvent = null;
+
         if (popup) {
             popup.style.display = 'none';
         }
@@ -297,7 +496,9 @@
         if (!$ || $(document).data('btEventPopupBound')) {
             return;
         }
+
         $(document).data('btEventPopupBound', true);
+
         $(document)
             .on('mouseenter.btEventPopup', SELECTOR, function (event) {
                 show(this, event);
@@ -308,17 +509,15 @@
             .on('mouseleave.btEventPopup click.btEventPopup', SELECTOR, function () {
                 hide();
             });
-
-        document.addEventListener('click', function () {
-            hide();
-        }, true);
     }
 
     window.BT_POPUP = {
         bind: bind,
         show: show,
-        hide: hide
+        hide: hide,
+        normalizeConfig: normalizeConfig
     };
+
     window.TI_POPUP = window.BT_POPUP;
 
     if ($) {
@@ -326,9 +525,11 @@
             return this.each(function () {
                 $(this)
                     .data(DATA_KEY, config)
-                    .attr('data-bt-popup-bound', '1');
+                    .attr('data-bt-popup-bound', '1')
+                    .attr('data-ti-popup-bound', '1');
             });
         };
+
         $.fn.newPopup = $.fn.tiPopup;
 
         $(bind);
