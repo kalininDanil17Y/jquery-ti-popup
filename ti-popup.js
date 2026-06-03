@@ -527,6 +527,51 @@
         }
     }
 
+    function isPointerOverElement(el, event) {
+        if (!el || !event) {
+            return false;
+        }
+    
+        var x = event.clientX;
+        var y = event.clientY;
+    
+        if (typeof x === 'undefined' || typeof y === 'undefined') {
+            return false;
+        }
+    
+        var target = document.elementFromPoint(x, y);
+    
+        if (!target) {
+            return false;
+        }
+    
+        return el === target || el.contains(target);
+    }
+    
+    function checkPointerAfterClick(el, event) {
+        window.requestAnimationFrame(function () {
+            if (activeEl !== el) {
+                return;
+            }
+    
+            if (!isPointerOverElement(el, event)) {
+                hide();
+                return;
+            }
+    
+            setTimeout(function () {
+                if (activeEl !== el) {
+                    return;
+                }
+    
+                if (!isPointerOverElement(el, event)) {
+                    hide();
+                }
+            }, 50);
+        });
+    }
+    
+
     function bind() {
         if (!$ || $(document).data('btEventPopupBound')) {
             return;
@@ -549,7 +594,10 @@
         
                 if (cfg.hideOnClick) {
                     hide();
+                    return;
                 }
+        
+                checkPointerAfterClick(this, event);
             });
     }
 
