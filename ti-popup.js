@@ -73,8 +73,8 @@
                 'top:0;' +
                 'box-sizing:border-box;' +
                 'background:#674025;' +
-                'border-radius:20px;' +
-                'padding:11px;' +
+                'border-radius:13px;' +
+                'padding:4px;' +
                 'pointer-events:none;' +
                 'display:none;' +
                 'color:#52331e;' +
