@@ -1,5 +1,6 @@
 /**
  * TiPopup
+ * https://cdn.jsdelivr.net/gh/kalininDanil17Y/jquery-ti-popup@v2.5/ti-popup.js
  *
  * Supported:
  * - data-ti-popup="HTML"
@@ -51,12 +52,17 @@
         style: '',
         innerStyle: '',
         refreshInterval: 0,
-        hideOnClick: false
+        watchPointer: true,
+        watchPointerInterval: 150
     };
 
     var activeEl = null;
     var activeEvent = null;
     var refreshTimer = null;
+
+    var pointerX = 0;
+    var pointerY = 0;
+    var pointerWatchTimer = null;
 
     function ensureStyles() {
         if (document.getElementById(STYLE_ID)) {
@@ -69,27 +75,27 @@
 
         style.appendChild(document.createTextNode(
             '.bt_event_popup{' +
-                'position:fixed;' +
-                'left:0;' +
-                'top:0;' +
-                'box-sizing:border-box;' +
-                'background:#674025;' +
-                'border-radius:13px;' +
-                'padding:4px;' +
-                'pointer-events:none;' +
-                'display:none;' +
-                'color:#52331e;' +
-                'font-family:NewTahoma,Tahoma,Arial,sans-serif;' +
-                'box-shadow:0 12px 28px rgba(0,0,0,.35);' +
+            'position:fixed;' +
+            'left:0;' +
+            'top:0;' +
+            'box-sizing:border-box;' +
+            'background:#674025;' +
+            'border-radius:13px;' +
+            'padding:4px;' +
+            'pointer-events:none;' +
+            'display:none;' +
+            'color:#52331e;' +
+            'font-family:NewTahoma,Tahoma,Arial,sans-serif;' +
+            'box-shadow:0 12px 28px rgba(0,0,0,.35);' +
             '}' +
             '.bt_event_popup__inner{' +
-                'box-sizing:border-box;' +
-                'max-width:100%;' +
-                'background:#d9cbae;' +
-                'border-radius:10px;' +
-                'padding:12px;' +
-                'font-size:14px;' +
-                'line-height:1.35;' +
+            'box-sizing:border-box;' +
+            'max-width:100%;' +
+            'background:#d9cbae;' +
+            'border-radius:10px;' +
+            'padding:12px;' +
+            'font-size:14px;' +
+            'line-height:1.35;' +
             '}'
         ));
 
@@ -492,12 +498,16 @@
         activeEl = el;
         activeEvent = event;
 
+        pointerX = event.clientX;
+        pointerY = event.clientY;
+
         applyPopupConfig(popup, inner, cfg);
 
         popup.style.display = 'block';
 
         positionPopup(popup, event, cfg);
         startRefresh(el, cfg);
+        startPointerWatch(el, cfg);
     }
 
     function move(el, event) {
@@ -508,16 +518,17 @@
         }
 
         activeEvent = event;
+        pointerX = event.clientX;
+        pointerY = event.clientY;
 
-        var cfg = normalizeConfig(undefined, el, event);
-
-        positionPopup(popup, event, cfg);
+        positionPopup(popup, event, normalizeConfig(undefined, el, event));
     }
 
     function hide() {
         var popup = document.getElementById(POPUP_ID);
 
         stopRefresh();
+        stopPointerWatch();
 
         activeEl = null;
         activeEvent = null;
@@ -527,50 +538,85 @@
         }
     }
 
-    function isPointerOverElement(el, event) {
-        if (!el || !event) {
+    function isPointerOverElement(el, x, y) {
+        if (!el) {
             return false;
         }
-    
-        var x = event.clientX;
-        var y = event.clientY;
-    
+
         if (typeof x === 'undefined' || typeof y === 'undefined') {
             return false;
         }
-    
+
         var target = document.elementFromPoint(x, y);
-    
+
         if (!target) {
             return false;
         }
-    
+
         return el === target || el.contains(target);
     }
-    
-    function checkPointerAfterClick(el, event) {
-        window.requestAnimationFrame(function () {
-            if (activeEl !== el) {
-                return;
-            }
-    
-            if (!isPointerOverElement(el, event)) {
-                hide();
-                return;
-            }
-    
-            setTimeout(function () {
-                if (activeEl !== el) {
-                    return;
-                }
-    
-                if (!isPointerOverElement(el, event)) {
-                    hide();
-                }
-            }, 50);
-        });
+
+    function stopPointerWatch() {
+        if (pointerWatchTimer) {
+            clearInterval(pointerWatchTimer);
+            pointerWatchTimer = null;
+        }
     }
-    
+
+    function isPointerOverElement(el) {
+        if (!el) {
+            return false;
+        }
+
+        var target = document.elementFromPoint(pointerX, pointerY);
+
+        if (!target) {
+            return false;
+        }
+
+        return el === target || el.contains(target);
+    }
+
+    function startPointerWatch(el, cfg) {
+        stopPointerWatch();
+
+        if (!cfg || !cfg.watchPointer) {
+            return;
+        }
+
+        var interval = parseNumber(cfg.watchPointerInterval, 200);
+
+        if (interval < 50) {
+            interval = 50;
+        }
+
+        pointerWatchTimer = setInterval(function () {
+            if (!activeEl || activeEl !== el) {
+                stopPointerWatch();
+                return;
+            }
+
+            /*
+             * Если popup скрыт — watcher больше не нужен.
+             */
+            var popup = document.getElementById(POPUP_ID);
+
+            if (!popup || popup.style.display !== 'block') {
+                stopPointerWatch();
+                return;
+            }
+
+            /*
+             * Главная проверка:
+             * если под курсором уже не исходный элемент,
+             * значит курсор ушёл или элемент перекрыт модалкой/overlay.
+             */
+            if (!isPointerOverElement(el)) {
+                hide();
+            }
+        }, interval);
+    }
+
 
     function bind() {
         if (!$ || $(document).data('btEventPopupBound')) {
@@ -588,16 +634,6 @@
             })
             .on('mouseleave.btEventPopup', SELECTOR, function () {
                 hide();
-            })
-            .on('click.btEventPopup', SELECTOR, function (event) {
-                var cfg = normalizeConfig(undefined, this, event);
-        
-                if (cfg.hideOnClick) {
-                    hide();
-                    return;
-                }
-        
-                checkPointerAfterClick(this, event);
             });
     }
 
