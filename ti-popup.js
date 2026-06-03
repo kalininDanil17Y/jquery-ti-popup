@@ -1,6 +1,7 @@
 /**
  * TiPopup
  *
+ * https://github.com/kalininDanil17Y/jquery-ti-popup
  * https://codepen.io/kalinindanil17Y/pen/RNGzKad
  */
 (function (window, document, $) {
@@ -26,6 +27,7 @@
     var activeEl = null;
     var activeEvent = null;
     var refreshTimer = null;
+    var hoverWatchTimer = null;
 
     function ensureStyles() {
         if (document.getElementById(STYLE_ID)) {
@@ -42,8 +44,8 @@
                 'top:0;' +
                 'box-sizing:border-box;' +
                 'background:#674025;' +
-                'border-radius:20px;' +
-                'padding:11px;' +
+                'border-radius:13px;' +
+                'padding:4px;' +
                 'pointer-events:none;' +
                 'display:none;' +
                 'color:#52331e;' +
@@ -209,6 +211,7 @@
         popup.style.display = 'block';
         positionPopup(popup, event, cfg);
         startRefresh(el, cfg);
+        startHoverWatch();
     }
 
     function move(el, event) {
@@ -225,6 +228,26 @@
             clearInterval(refreshTimer);
             refreshTimer = null;
         }
+    }
+
+    function stopHoverWatch() {
+        if (hoverWatchTimer) {
+            clearInterval(hoverWatchTimer);
+            hoverWatchTimer = null;
+        }
+    }
+
+    function startHoverWatch() {
+        stopHoverWatch();
+        hoverWatchTimer = setInterval(function () {
+            if (!activeEl) {
+                stopHoverWatch();
+                return;
+            }
+            if (!document.documentElement.contains(activeEl) || (activeEl.matches && !activeEl.matches(':hover'))) {
+                hide();
+            }
+        }, 120);
     }
 
     function refreshContent(el) {
@@ -262,6 +285,7 @@
     function hide() {
         var popup = document.getElementById(POPUP_ID);
         stopRefresh();
+        stopHoverWatch();
         activeEl = null;
         activeEvent = null;
         if (popup) {
@@ -284,6 +308,10 @@
             .on('mouseleave.btEventPopup click.btEventPopup', SELECTOR, function () {
                 hide();
             });
+
+        document.addEventListener('click', function () {
+            hide();
+        }, true);
     }
 
     window.BT_POPUP = {
