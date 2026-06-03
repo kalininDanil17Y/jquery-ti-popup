@@ -1,20 +1,25 @@
 /**
  * TiPopup
  *
- * Usage:
- * $('[data-ti-popup]').tiPopup(...)
- *
  * Supported:
  * - data-ti-popup="HTML"
  * - data-ti-popup-fn="window.someFunction"
+ * - data-ti-popup-z-index="20000"
+ * - data-ti-popup-class="some-class"
+ * - data-ti-popup-inner-class="some-inner-class"
+ * - data-ti-popup-style="max-width:520px;"
+ * - data-ti-popup-inner-style="font-size:18px;"
+ * - data-ti-popup-refresh="500"
+ *
+ * JS API:
  * - $(el).tiPopup("HTML")
- * - $(el).tiPopup(function (el, event) { return "HTML" })
- * - $(el).tiPopup(function (el, event) { return { html: "HTML" } })
+ * - $(el).tiPopup(function (el, event) { return "HTML"; })
+ * - $(el).tiPopup(function (el, event) { return { html: "HTML" }; })
  * - $(el).tiPopup({ html: "HTML" })
  * - $(el).tiPopup({ text: "Plain text" })
- * - $(el).tiPopup({ getHtml(el, event) { return "HTML" } })
- * - $(el).tiPopup({ getText(el, event) { return "Plain text" } })
- * - $(el).tiPopup({ getConfig(el, event) { return { html: "HTML" } } })
+ * - $(el).tiPopup({ getHtml(el, event) { return "HTML"; } })
+ * - $(el).tiPopup({ getText(el, event) { return "Plain text"; } })
+ * - $(el).tiPopup({ getConfig(el, event) { return { html: "HTML" }; } })
  */
 (function (window, document, $) {
     'use strict';
@@ -68,8 +73,8 @@
                 'top:0;' +
                 'box-sizing:border-box;' +
                 'background:#674025;' +
-                'border-radius:13px;' +
-                'padding:4px;' +
+                'border-radius:20px;' +
+                'padding:11px;' +
                 'pointer-events:none;' +
                 'display:none;' +
                 'color:#52331e;' +
@@ -203,13 +208,15 @@
         ], '');
 
         var dataCfg = $ ? $(el).data(DATA_KEY) : null;
-
         var attrProvider = readFn(attrFn);
         var configFromData = {};
         var configFromResult = {};
 
         /**
-         * 1. Конфиг из JS
+         * JS config:
+         * .tiPopup("HTML")
+         * .tiPopup(function () {})
+         * .tiPopup({ ... })
          */
         if (typeof dataCfg !== 'undefined' && dataCfg !== null) {
             configFromData = normalizeReturnedConfig(dataCfg, el, event);
@@ -217,7 +224,7 @@
         }
 
         /**
-         * 2. getConfig — основной способ получить полный динамический конфиг.
+         * Recommended: getConfig
          */
         if (typeof cfg.getConfig === 'function') {
             var dynamicConfig = cfg.getConfig.call(el, el, event);
@@ -230,7 +237,7 @@
         }
 
         /**
-         * 3. Legacy provider — оставлен для совместимости.
+         * Legacy alias: provider
          */
         if (typeof cfg.provider === 'function') {
             var providerConfig = cfg.provider.call(el, el, event);
@@ -243,7 +250,7 @@
         }
 
         /**
-         * 4. Функция из data-ti-popup-fn / data-bt-popup-fn.
+         * data-ti-popup-fn / data-bt-popup-fn
          */
         if (attrProvider) {
             configFromResult = normalizeReturnedConfig(attrProvider, el, event);
@@ -251,7 +258,7 @@
         }
 
         /**
-         * 5. Прямой result, если normalizeConfig когда-нибудь будет вызван с result.
+         * Optional direct result
          */
         if (typeof result !== 'undefined') {
             configFromResult = normalizeReturnedConfig(result, el, event);
@@ -259,7 +266,7 @@
         }
 
         /**
-         * 6. getHtml / getText — рекомендуемый способ динамического контента.
+         * Recommended content callbacks
          */
         if (typeof cfg.getHtml === 'function') {
             cfg.html = cfg.getHtml.call(el, el, event);
@@ -270,7 +277,7 @@
         }
 
         /**
-         * 7. Если HTML всё ещё не задан — берём data-ti-popup.
+         * Fallback to data-ti-popup / data-bt-popup
          */
         if (
             typeof cfg.html === 'undefined' &&
@@ -282,10 +289,8 @@
         }
 
         /**
-         * 8. HTML / text / content.
-         *
-         * html/content вставляются как HTML.
-         * text экранируется.
+         * html/content are inserted as HTML.
+         * text is escaped.
          */
         if (typeof cfg.html !== 'undefined') {
             cfg.html = String(cfg.html);
@@ -298,7 +303,7 @@
         }
 
         /**
-         * 9. Атрибуты имеют приоритет над конфигом.
+         * Attributes override JS config.
          */
         cfg.zIndex = parseNumber(getAttr(el, [
             'data-bt-popup-z-index',
@@ -350,29 +355,35 @@
 
     function applyPopupConfig(popup, inner, cfg) {
         var currentDisplay = popup.style.display;
-    
+        var currentLeft = popup.style.left;
+        var currentTop = popup.style.top;
+
         popup.className = 'bt_event_popup' + (cfg.className ? ' ' + cfg.className : '');
-    
+
+        /**
+         * Important:
+         * Do not lose display:block during refreshContent().
+         */
         popup.style.cssText = '';
         popup.style.position = 'fixed';
-        popup.style.left = '0';
-        popup.style.top = '0';
+        popup.style.left = currentLeft || '0';
+        popup.style.top = currentTop || '0';
         popup.style.boxSizing = 'border-box';
         popup.style.zIndex = cfg.zIndex;
         popup.style.maxWidth = cfg.maxWidth + 'px';
-    
+
         if (currentDisplay) {
             popup.style.display = currentDisplay;
         }
-    
+
         if (cfg.style) {
             popup.style.cssText += ';' + cfg.style;
         }
-    
+
         inner.className = 'bt_event_popup__inner' + (
             cfg.innerClassName ? ' ' + cfg.innerClassName : ''
         );
-    
+
         inner.style.cssText = cfg.innerStyle || '';
         inner.innerHTML = cfg.html;
     }
@@ -431,6 +442,13 @@
         }
 
         applyPopupConfig(popup, inner, cfg);
+
+        /**
+         * Extra safety:
+         * applyPopupConfig must not hide popup during refresh.
+         */
+        popup.style.display = 'block';
+
         positionPopup(popup, activeEvent, cfg);
     }
 
@@ -482,6 +500,7 @@
         activeEvent = event;
 
         var cfg = normalizeConfig(undefined, el, event);
+
         positionPopup(popup, event, cfg);
     }
 
