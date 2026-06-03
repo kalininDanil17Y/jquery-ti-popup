@@ -349,8 +349,10 @@
     }
 
     function applyPopupConfig(popup, inner, cfg) {
+        var currentDisplay = popup.style.display;
+    
         popup.className = 'bt_event_popup' + (cfg.className ? ' ' + cfg.className : '');
-
+    
         popup.style.cssText = '';
         popup.style.position = 'fixed';
         popup.style.left = '0';
@@ -358,15 +360,19 @@
         popup.style.boxSizing = 'border-box';
         popup.style.zIndex = cfg.zIndex;
         popup.style.maxWidth = cfg.maxWidth + 'px';
-
+    
+        if (currentDisplay) {
+            popup.style.display = currentDisplay;
+        }
+    
         if (cfg.style) {
             popup.style.cssText += ';' + cfg.style;
         }
-
+    
         inner.className = 'bt_event_popup__inner' + (
             cfg.innerClassName ? ' ' + cfg.innerClassName : ''
         );
-
+    
         inner.style.cssText = cfg.innerStyle || '';
         inner.innerHTML = cfg.html;
     }
