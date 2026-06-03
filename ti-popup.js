@@ -207,6 +207,15 @@
             'data-ti-popup-fn'
         ], '');
 
+        var hideOnClickAttr = getAttr(el, [
+            'data-bt-popup-hide-on-click',
+            'data-ti-popup-hide-on-click'
+        ], null);
+
+        if (hideOnClickAttr !== null) {
+            cfg.hideOnClick = hideOnClickAttr !== 'false' && hideOnClickAttr !== '0';
+        }
+
         var dataCfg = $ ? $(el).data(DATA_KEY) : null;
         var attrProvider = readFn(attrFn);
         var configFromData = {};
@@ -531,8 +540,15 @@
             .on('mousemove.btEventPopup', SELECTOR, function (event) {
                 move(this, event);
             })
-            .on('mouseleave.btEventPopup click.btEventPopup', SELECTOR, function () {
+            .on('mouseleave.btEventPopup', SELECTOR, function () {
                 hide();
+            })
+            .on('click.btEventPopup', SELECTOR, function (event) {
+                var cfg = normalizeConfig(undefined, this, event);
+        
+                if (cfg.hideOnClick) {
+                    hide();
+                }
             });
     }
 
