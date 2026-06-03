@@ -50,7 +50,8 @@
         innerClassName: '',
         style: '',
         innerStyle: '',
-        refreshInterval: 0
+        refreshInterval: 0,
+        hideOnClick: false
     };
 
     var activeEl = null;
