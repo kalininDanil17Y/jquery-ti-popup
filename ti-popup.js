@@ -1,6 +1,6 @@
 /**
  * TiPopup
- * https://cdn.jsdelivr.net/gh/kalininDanil17Y/jquery-ti-popup@v2.5/ti-popup.js
+ * https://cdn.jsdelivr.net/gh/kalininDanil17Y/jquery-ti-popup@main/ti-popup.js
  *
  * Supported:
  * - data-ti-popup="HTML"
