@@ -62,7 +62,7 @@
     var hoverShowTimer = null;
     var hoverPendingEl = null;
     var hoverPendingEvent = null;
-    var HOVER_SHOW_DELAY = 200;
+    var HOVER_SHOW_DELAY = 400;
 
     var pointerX = 0;
     var pointerY = 0;
